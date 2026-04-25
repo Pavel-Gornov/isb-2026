@@ -11,19 +11,6 @@ from colorama import Fore, Back, Style
 import os
 
 
-def create_iv(length: int) -> bytes:
-    """
-    Вспомогательная функция для создания вектора инициализации нужной длинны.
-    Да, это примитивный генератор псевдослучайных чисел. Всё равно лучше, чем записанная константа.
-    """
-    result = bytes()
-    state = 42
-    for _ in range(length):
-        state = (state * 57 + 19) % 256
-        result += state.to_bytes(1)
-    return result
-
-
 def deserialize(path: str) -> bytes:
     """Функция для считывания (десериализации) данных из файла"""
     with open(path, mode='rb') as file:
@@ -40,7 +27,7 @@ def serialize(path: str, data: bytes) -> None:
         file.write(data)
 
 
-def get_symmetric_key(settings: dict[str, str]) -> bytes:
+def get_symmetric_key(settings: dict[str, str | int | bytes]) -> bytes:
     """Возвращает расшифрованный ключ для симметричного алгоритма системы"""
     encrypted_key = deserialize(settings["symmetric_key"])
     private_key = load_pem_private_key(deserialize(settings["secret_key"]), password=None)
@@ -52,13 +39,13 @@ def get_symmetric_key(settings: dict[str, str]) -> bytes:
     return symmetric_key
 
 
-def generate_keys(settings: dict[str, str], length: int) -> None:
+def generate_keys(settings: dict[str, str | int | bytes]) -> None:
     """Процедура, создающая ключи и сериализующая их"""
-    print(Back.GREEN + Style.BRIGHT + f"Создаём симметричный ключ длинной {length} бит.")
-    symmetric_key = os.urandom(length // 8)
+    print(Back.GREEN + Style.BRIGHT + f"Создаём симметричный ключ длинной {settings['3des_key_size']} бит.")
+    symmetric_key = os.urandom(settings["3des_key_size"] // 8)
 
     print(Back.GREEN + Style.BRIGHT + f"Создаём публичный и приватный ключ.")
-    keys = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    keys = rsa.generate_private_key(public_exponent=settings["rsa_public_exponent"], key_size=settings["rsa_key_size"])
     private_key = keys
     public_key = keys.public_key()
 
@@ -83,16 +70,15 @@ def generate_keys(settings: dict[str, str], length: int) -> None:
     print("Зашифрованный симметричный ключ сохранён в", Fore.BLUE + f"{os.path.abspath(settings['symmetric_key'])}")
 
 
-def encrypt(settings: dict[str, str]) -> None:
+def encrypt(settings: dict[str, str | int | bytes]) -> None:
     """Процедура, шифрующая содержимое исходного файла симметричным алгоритмом (3DES)"""
     print(Fore.GREEN + "Получаем ключ.")
     symmetric_key = get_symmetric_key(settings)
     x3des = TripleDES(symmetric_key)
-    block_size = x3des.block_size
-    cipher = Cipher(x3des, mode=modes.CBC(create_iv(block_size // 8)))
+    cipher = Cipher(x3des, mode=modes.CBC(settings["3des_init_vector"]))
     encryptor = cipher.encryptor()
 
-    padder = padding.ANSIX923(block_size).padder()
+    padder = padding.ANSIX923(x3des.block_size).padder()
     print("Шифруемый файл:", Fore.BLUE + f"{os.path.abspath(settings['initial_file'])}")
     file_data = deserialize(settings["initial_file"])
     padded_data = padder.update(file_data) + padder.finalize()
@@ -104,15 +90,14 @@ def encrypt(settings: dict[str, str]) -> None:
     print("Результат сохранён в", Fore.BLUE + f"{os.path.abspath(settings['encrypted_file'])}")
 
 
-def decrypt(settings: dict[str, str]) -> None:
+def decrypt(settings: dict[str, str | int | bytes]) -> None:
     """Процедура, дешифрующая зашифрованный с помощью симметричного алгоритма файл"""
     print(Fore.GREEN + "Получаем ключ.")
     symmetric_key = get_symmetric_key(settings)
     x3des = TripleDES(symmetric_key)
-    block_size = x3des.block_size
-    cipher = Cipher(x3des, mode=modes.CBC(create_iv(block_size // 8)))
+    cipher = Cipher(x3des, mode=modes.CBC(settings["3des_init_vector"]))
     decryptor = cipher.decryptor()
-    unpadder = padding.ANSIX923(block_size).unpadder()
+    unpadder = padding.ANSIX923(x3des.block_size).unpadder()
 
     enc_file_data = deserialize(settings["encrypted_file"])
     print("Расшифровываем", Fore.BLUE + f"{os.path.abspath(settings['encrypted_file'])}")
@@ -126,15 +111,17 @@ def decrypt(settings: dict[str, str]) -> None:
     print("Результат сохранён в", Fore.BLUE + f"{os.path.abspath(settings['decrypted_file'])}")
 
 
-def main(settings: dict[str, str], mode: str, length: int) -> None:
+def main(settings: dict[str, str | int | bytes], mode: str) -> None:
+    """Точка входа в логику программы"""
     colorama.init(autoreset=True)
 
-    if mode == "gen":
-        generate_keys(settings, length)
-    elif mode == "enc":
-        encrypt(settings)
-    elif mode == "dec":
-        decrypt(settings)
+    match mode:
+        case "gen":
+            generate_keys(settings)
+        case "enc":
+            encrypt(settings)
+        case "dec":
+            decrypt(settings)
 
 
 if __name__ == "__main__":
@@ -144,26 +131,24 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument("-s", "--settings", help="Путь до файла с параметрами", default="./settings.json")
-    parser.add_argument("-l", "--length", type=int, choices=(64, 128, 192), help="Длинна ключа шифрования", default=64)
 
     group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument('-gen', '--generation', action='store_true', help='Запускает режим генерации ключей')
-    group.add_argument('-enc', '--encryption', action='store_true', help='Запускает режим шифрования')
-    group.add_argument('-dec', '--decryption', action='store_true', help='Запускает режим дешифрования')
+    group.add_argument('-gen', '--generation', action='store_const', const='gen', dest='mode', help='Запускает режим генерации ключей')
+    group.add_argument('-enc', '--encryption', action='store_const', const='enc', dest='mode', help='Запускает режим шифрования')
+    group.add_argument('-dec', '--decryption', action='store_const', const='dec', dest='mode', help='Запускает режим дешифрования')
 
     args = parser.parse_args()
 
     try:
         with open(args.settings, mode="r", encoding="utf-8") as input:
             settings = json.load(input)
+        settings.setdefault("rsa_public_exponent", 65537)
+        settings.setdefault("rsa_key_size", 2048)
+        settings.setdefault("3des_key_size", 64)
+        # JSON не поддерживает хранения байтовых объектов. Можно использовать кодировку в base64, но массив чисел выглядит приятнее. 
+        settings.setdefault("3des_init_vector", (255, 241, 68, 43, 13, 31, 35, 86))
+        settings["3des_init_vector"] = bytes(settings["3des_init_vector"])
 
-        if args.generation:
-            mode = "gen"
-        elif args.encryption:
-            mode = "enc"
-        else:
-            mode = "dec"
-
-        main(settings, mode, args.length)
+        main(settings, args.mode)
     except FileNotFoundError as e:
         print(f"Файл {e.filename} не найден!")

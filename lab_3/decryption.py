@@ -9,12 +9,12 @@ import os
 
 def remove_padding(file_data: bytes, block_size: int) -> bytes:
     """
-    Функция, применяющая padding к шифруемым данным.
+    Функция, убирающая padding из расшифрованных данных.
     Args:
-        file_data (bytes): Данные, которые нужно подогнать под размер блока
+        file_data (bytes): Данные
         block_size (bytes): Размер блока блочного алгоритма
     Returns:
-        Данные, подходящие под шифрование блочным алгоритмом
+        Исходные данные
     """
     unpadder = padding.ANSIX923(block_size).unpadder()
     unpadded_data = unpadder.update(file_data) + unpadder.finalize()
@@ -23,13 +23,13 @@ def remove_padding(file_data: bytes, block_size: int) -> bytes:
 
 def apply_3des_decryption(data: bytes, key: bytes, mode: Any) -> bytes:
     """
-    Функция, шифрующая данные алгоритмом 3DES в заданном режиме.
+    Функция, расшифровывающая данные алгоритмом 3DES в заданном режиме.
     Args:
-        data (bytes): Данные для шифрования
+        data (bytes): Зашифрованные данные
         key (bytes): Ключ шифрования
         mode: Режим шифрования алгоритма
     Returns:
-        Результат шифрования алгоритма
+        Расшифрованные данные
     """
     x3des = TripleDES(key)
     cipher = Cipher(x3des, mode=mode)

@@ -1,13 +1,15 @@
 from key_gen import generate_keys
 from encryption import encrypt
 from decryption import decrypt
+from typing import Literal
 
 
-def main(settings: dict[str, str | int | bytes], mode: str) -> None:
+def main(settings: dict[str, str | int | bytes], mode: Literal["gen", "enc", "dec"]) -> None:
     """
     Точка входа в логику программы
     Args:
         settings (dict): Параметры приложения
+        mode (str): Режим работы программы
     """
     match mode:
         case "gen":

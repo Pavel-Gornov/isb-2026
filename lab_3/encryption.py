@@ -2,7 +2,6 @@ from cryptography.hazmat.decrepit.ciphers.algorithms import TripleDES
 from cryptography.hazmat.primitives.ciphers import Cipher, modes
 from cryptography.hazmat.primitives import padding
 from colorama import Fore, Back, Style, init
-from numpy import byte
 from shared import serialize, deserialize, get_symmetric_key
 from typing import Any
 import os

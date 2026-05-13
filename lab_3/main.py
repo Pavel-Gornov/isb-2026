@@ -48,3 +48,5 @@ if __name__ == "__main__":
         main(settings, args.mode)
     except FileNotFoundError as e:
         print(f"Файл {e.filename} не найден!")
+    except Exception as e:
+        print(e)
